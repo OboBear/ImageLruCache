@@ -1,6 +1,8 @@
 package com.me.obo.imageloader;
 
 import android.content.Context;
+import android.content.pm.PackageInfo;
+import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Environment;
@@ -8,8 +10,9 @@ import android.util.Log;
 import android.util.LruCache;
 import android.widget.ImageView;
 
-import com.bumptech.glide.disklrucache.DiskLruCache;
 
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -17,6 +20,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.lang.ref.WeakReference;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -46,10 +51,21 @@ public class ImageRequest {
         File sdkFile = Environment.getExternalStorageDirectory();
         File file = new File(sdkFile + "/opic");
         try {
-            diskLruCache =  DiskLruCache.open(file, 1, 1, 100 * 1024 * 1024);
+            diskLruCache =  DiskLruCache.open(file, getAppVersion(context), 1, 10 * 1024 * 1024);
         } catch (IOException e) {
             e.printStackTrace();
         }
+    }
+
+
+    public int getAppVersion(Context context) {
+        try {
+            PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
+            return info.versionCode;
+        } catch (PackageManager.NameNotFoundException e) {
+            e.printStackTrace();
+        }
+        return 1;
     }
 
     public ImageRequest load(String url) {
@@ -58,15 +74,15 @@ public class ImageRequest {
     }
 
     public void into(ImageView imageView) {
-        if (lruCache.get(url) != null) {
-            imageView.setImageBitmap(lruCache.get(url));
+        final String hashedKey = hashKeyForDisk(url);
+        if (lruCache.get(hashedKey) != null) {
+            imageView.setImageBitmap(lruCache.get(hashedKey));
         } else {
             try {
-                DiskLruCache.Value snapShot = diskLruCache.get(url);
+                DiskLruCache.Snapshot snapShot = diskLruCache.get(hashedKey);
 
                 if (snapShot != null) {
-                    File cacheFile = snapShot.getFile(0);
-                    InputStream inputStream = new FileInputStream(cacheFile);
+                    InputStream inputStream = snapShot.getInputStream(0);
                     Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
                     lruCache.put(url, bitmap);
                     imageView.setImageBitmap(bitmap);
@@ -84,25 +100,89 @@ public class ImageRequest {
                             InputStream inputStream = response.body().byteStream();
                             int len ;
                             byte[] bytes = new byte[4096];
-                            DiskLruCache.Editor editor = diskLruCache.edit(url);
-                            File fff = editor.getFile(0);
-                            if (!fff.exists()) {
-                                fff.createNewFile();
+                            DiskLruCache.Editor editor = diskLruCache.edit(hashedKey);
+                            OutputStream outputStream = editor.newOutputStream(0);
+//                            Log.i("","");
+//                            while ((len = inputStream.read(bytes, 0, bytes.length)) != -1) {
+//                                outputStream.write(bytes, 0, len);
+//                            }
+
+
+                            BufferedInputStream in = new BufferedInputStream(inputStream, 8 * 1024);
+                            BufferedOutputStream out = new BufferedOutputStream(outputStream, 8 * 1024);
+                            int b;
+                            while ( (b = in.read()) != -1) {
+                                out.write(b);
                             }
-                            OutputStream outputStream = new FileOutputStream(fff);
-                            Log.i("","");
-                            while ((len = inputStream.read(bytes, 0, bytes.length)) != -1) {
-                                outputStream.write(bytes, 0, len);
-                            }
+
+
+                            out.close();
+                            in.close();
+
+
                             outputStream.flush();
                             outputStream.close();
+                            editor.commit();
+
+
+                            Bitmap cachedBitmap = readCache(hashedKey);
+                            if (cachedBitmap != null) {
+                                Log.i("","");
+                            }
                         }
                     });
                 }
             } catch (IOException e) {
                 e.printStackTrace();
             }
-
         }
     }
+
+    private Bitmap readCache(String key) {
+        if (lruCache.get(key) != null) {
+            return lruCache.get(key);
+        } else {
+            DiskLruCache.Snapshot snapShot = null;
+            try {
+                snapShot = diskLruCache.get(key);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+
+            if (snapShot != null) {
+                InputStream inputStream = snapShot.getInputStream(0);
+                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+                lruCache.put(url, bitmap);
+                return bitmap;
+            }
+        }
+        return null;
+    }
+
+
+
+    public String hashKeyForDisk(String key) {
+        String cacheKey;
+        try {
+            final MessageDigest mDigest = MessageDigest.getInstance("MD5");
+            mDigest.update(key.getBytes());
+            cacheKey = bytesToHexString(mDigest.digest());
+        } catch (NoSuchAlgorithmException e) {
+            cacheKey = String.valueOf(key.hashCode());
+        }
+        return cacheKey;
+    }
+
+    private String bytesToHexString(byte[] bytes) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < bytes.length; i++) {
+            String hex = Integer.toHexString(0xFF & bytes[i]);
+            if (hex.length() == 1) {
+                sb.append('0');
+            }
+            sb.append(hex);
+        }
+        return sb.toString();
+    }
+
 }
