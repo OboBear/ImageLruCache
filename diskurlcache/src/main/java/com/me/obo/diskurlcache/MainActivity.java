@@ -47,9 +47,7 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void loadImage() {
-
         try {
-
             DiskLruCache.Snapshot snapshot = diskLruCache.get("1");
 
             if (snapshot != null) {
@@ -74,6 +72,7 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }
     }
+
 
     public File getDiskCacheDir(Context context, String uniqueName) {
         String cachePath;

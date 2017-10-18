@@ -62,7 +62,6 @@ public class ImageRequest {
         }
     }
 
-
     public int getAppVersion(Context context) {
         try {
             PackageInfo info = context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
@@ -104,19 +103,14 @@ public class ImageRequest {
                         public void onResponse(Call call, Response response) throws IOException {
                             InputStream inputStream = response.body().byteStream();
 
-
                             Log.i(TAG, "");
                             DiskLruCache.Editor editor = diskLruCache.edit(hashedKey);
                             OutputStream outputStream = editor.newOutputStream(0);
-                            BufferedInputStream in = new BufferedInputStream(inputStream, 8 * 1024);
-                            BufferedOutputStream out = new BufferedOutputStream(outputStream, 8 * 1024);
-                            int b;
-                            while ( (b = in.read()) != -1) {
-                                out.write(b);
+                            byte[] bytes = new byte[4096];
+                            int len = 0;
+                            while ( (len = inputStream.read(bytes)) != -1) {
+                                outputStream.write(bytes, 0, len);
                             }
-
-                            out.close();
-                            in.close();
                             outputStream.flush();
                             outputStream.close();
                             editor.commit();
@@ -130,9 +124,8 @@ public class ImageRequest {
                                         imageView.setImageBitmap(cachedBitmap);
                                     }
                                 });
+                                lruCache.put(hashedKey, cachedBitmap);
                             }
-
-
                         }
                     });
                 }
@@ -162,8 +155,6 @@ public class ImageRequest {
         }
         return null;
     }
-
-
 
     public String hashKeyForDisk(String key) {
         String cacheKey;
