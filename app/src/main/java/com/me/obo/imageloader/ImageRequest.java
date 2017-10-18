@@ -51,7 +51,7 @@ public class ImageRequest {
         File sdkFile = Environment.getExternalStorageDirectory();
         File file = new File(sdkFile + "/opic");
         try {
-            diskLruCache =  DiskLruCache.open(file, getAppVersion(context), 1, 10 * 1024 * 1024);
+            diskLruCache =  DiskLruCache.open(getDiskCacheDir(context, "bitmap"), getAppVersion(context), 1, 10 * 1024 * 1024);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -124,6 +124,9 @@ public class ImageRequest {
                             outputStream.close();
                             editor.commit();
 
+                            diskLruCache.flush();
+
+
 
                             Bitmap cachedBitmap = readCache(hashedKey);
                             if (cachedBitmap != null) {
@@ -185,4 +188,16 @@ public class ImageRequest {
         return sb.toString();
     }
 
+
+    public static File getDiskCacheDir(Context context, String uniqueName) {
+        String cachePath;
+        if (Environment.MEDIA_MOUNTED.equals(Environment
+                .getExternalStorageState())
+                || !Environment.isExternalStorageRemovable()) {
+            cachePath = context.getExternalCacheDir().getPath();
+        } else {
+            cachePath = context.getCacheDir().getPath();
+        }
+        return new File(cachePath + File.separator + uniqueName);
+    }
 }
