@@ -6,6 +6,8 @@ import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.util.LruCache;
 import android.widget.ImageView;
@@ -35,6 +37,9 @@ import okhttp3.Response;
  */
 
 public class ImageRequest {
+
+    private static final String TAG = "ImageRequest";
+
     private WeakReference<Context> contextWeakReference;
     private String url;
     private static LruCache<String, Bitmap> lruCache = new LruCache<String, Bitmap>(4 * 1024 * 1024) {
@@ -73,7 +78,7 @@ public class ImageRequest {
         return this;
     }
 
-    public void into(ImageView imageView) {
+    public void into(final ImageView imageView) {
         final String hashedKey = hashKeyForDisk(url);
         if (lruCache.get(hashedKey) != null) {
             imageView.setImageBitmap(lruCache.get(hashedKey));
@@ -98,16 +103,11 @@ public class ImageRequest {
                         @Override
                         public void onResponse(Call call, Response response) throws IOException {
                             InputStream inputStream = response.body().byteStream();
-                            int len ;
-                            byte[] bytes = new byte[4096];
+
+
+                            Log.i(TAG, "");
                             DiskLruCache.Editor editor = diskLruCache.edit(hashedKey);
                             OutputStream outputStream = editor.newOutputStream(0);
-//                            Log.i("","");
-//                            while ((len = inputStream.read(bytes, 0, bytes.length)) != -1) {
-//                                outputStream.write(bytes, 0, len);
-//                            }
-
-
                             BufferedInputStream in = new BufferedInputStream(inputStream, 8 * 1024);
                             BufferedOutputStream out = new BufferedOutputStream(outputStream, 8 * 1024);
                             int b;
@@ -115,23 +115,24 @@ public class ImageRequest {
                                 out.write(b);
                             }
 
-
                             out.close();
                             in.close();
-
-
                             outputStream.flush();
                             outputStream.close();
                             editor.commit();
 
-                            diskLruCache.flush();
-
-
-
-                            Bitmap cachedBitmap = readCache(hashedKey);
+                            final Bitmap cachedBitmap = readCache(hashedKey);
                             if (cachedBitmap != null) {
-                                Log.i("","");
+                                Handler handler = new Handler(Looper.getMainLooper());
+                                handler.post(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        imageView.setImageBitmap(cachedBitmap);
+                                    }
+                                });
                             }
+
+
                         }
                     });
                 }
